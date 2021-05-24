@@ -2,17 +2,17 @@ import json
 import math
 from operator import attrgetter
 from itertools import groupby
-from tileSet import drawTileBySegments
+from tileSet import TileSet
 from tileSet import Border
 from PIL import Image, ImageDraw
 
-def main():
-  with open('simplified/osm-ruegen.geojson') as f:
+def main(geoJson):
+  with open(geoJson) as f:
     geo = json.load(f)
     assert geo['type']=='GeometryCollection'
     assert len(geo['geometries']) == 1
     assert geo['geometries'][0]['type']== 'MultiPolygon'
-    simple = geo['geometries'][0]['coordinates']
+    test(geo['geometries'][0]['coordinates'])
     test(simple)
 
 def test(multiPoly):
@@ -33,14 +33,17 @@ def test(multiPoly):
     p.x -= xoff
     p.y -= yoff
     p.tile = tileSet[int(p.x)][int(p.y)]
-  outline[-1] = outline[0]
+  outline.pop() # should be same as first
+  lastTile = outline[-1].tile
+  while lastTile == outline[0].tile:
+    outline.append(outline.pop(0))
+  outline.append(outline[0])
   lines = [Line(s,e,tileSet) for [s,e] in zip(outline[:-1],outline[1:])] 
   for l in lines:
     l.addSegments()
-  pointGroups = []
+  
   for tile, points in groupby(outline[:-1], key=attrgetter('tile')):
     pointsInSameTile = list(points)
-    pointGroups.append(pointsInSameTile)
     crossIn = pointsInSameTile[0].lineIn.points[-1].cross
     crossOut = pointsInSameTile[-1].lineOut.points[0].cross
     tile.addSegment(Segment(crossIn, crossOut))
@@ -57,15 +60,15 @@ def test(multiPoly):
 
   img = Image.new(mode="L", size=((xd+1)*30,(yd+1)*30), color=128)
   draw = ImageDraw.Draw(img)
+  renderer = TileSet()
   for x,column in enumerate(tileSet):
     for y,tile in enumerate(column):
       if len(tile.segments) > 2:
         print(f'WARNING: tile {tile} has {len(tile.segments)} segments')
       segments = tuple([tuple([s.crossIn.borderIn, s.crossOut.borderOut]) for s in tile.segments[:2]])
-      drawTileBySegments(draw,x,yd-y,segments)
+      renderer.drawTileBySegments(draw,x,yd-y,segments)
   img.save(f'map.png', "png")
-      
-        
+
 
 def printLines(lines):
   for l in lines:
@@ -181,5 +184,6 @@ class GeoPoint(Point):
     self.tile.addSegment(Segment(crossIn, crossOut))
 
 if __name__ == '__main__':
-  main()
+  geoJson = sys.argv>1 and sys.argv[1] or 'simplified/osm-ruegen.geojson'
+  main(geoJson)
 
