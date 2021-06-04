@@ -6,6 +6,7 @@ import sys
 import argparse
 import urllib
 import urllib2
+import time
 from operator import attrgetter
 from itertools import groupby
 from tileSet import TileSet
@@ -21,14 +22,18 @@ def createMapFromFile(geoJsonFileName):
     return createMap(json.load(geoJson))
 
 def createMap(geoJson):
-  assert geoJson['type']=='GeometryCollection'
-  assert len(geoJson['geometries']) == 1
-  assert geoJson['geometries'][0]['type']== 'MultiPolygon'
-  return test(geoJson['geometries'][0]['coordinates'])
+  assert geoJson['type']=='GeometryCollection' or geoJson['type']=='MultiPolygon'
+  if geoJson['type'] == 'MultiPolygon':
+    return test(geoJson['coordinates'])
+  else:
+    assert len(geoJson['geometries']) == 1
+    assert geoJson['geometries'][0]['type']== 'MultiPolygon'
+    return test(geoJson['geometries'][0]['coordinates'])
 
 def test(multiPoly):
   assert multiPoly[0][0][0] == multiPoly[0][0][-1]
-  outline = [GeoPoint(p) for p in reversed(multiPoly[0][0])]
+  outline = [GeoPoint(p) for p in reversed(max([poly[0] for poly in multiPoly],key=len))]
+  # TODO reverse depending on orientation
   xmin = min([p.x for p in outline])
   ymin = min([p.y for p in outline])
   xmax = max([p.x for p in outline])
@@ -182,11 +187,12 @@ class BorderPoint(Point):
     return super(BorderPoint, self).__str__()+' [{self.tileOut}-{self.tileIn}] {self.borderOut}-{self.borderIn}'.format(self=self)
 
 class GeoPoint(Point):
-  def __init__(self,latLong):
-      (longitude, latitude) = latLong 
+  def __init__(self,longLat):
+      (longitude, latitude) = longLat
       super(GeoPoint, self).__init__(
-        longitude * 111.320 * math.cos(math.radians(latitude)),
-        latitude * 110.574
+        longitude * 111.1949, # 6371/360*2pi
+        math.log(math.tan(math.radians(latitude)/2 + math.pi/4)) * 6371
+
       )
   def addSegment(self):
     crossIn = self.lineIn.points[-1].cross
@@ -204,7 +210,9 @@ if __name__ == '__main__':
   if args.geojson != None or args.polygon == None:
     img = createMapFromFile(geoJson)
   else:
-    req = urllib2.Request("http://polygons.openstreetmap.fr/?id={polygon}".format(polygon=args.polygon), 'x=0.000000&y=0.001000&z=0.005000&generate=Submit+Query')
+    polygonUrl = "http://polygons.openstreetmap.fr/?id={polygon}".format(polygon=args.polygon)
+    urllib.urlopen(polygonUrl).read()
+    req = urllib2.Request(polygonUrl, 'x=0.000000&y=0.001000&z=0.005000&generate=Submit+Query')
     urllib2.urlopen(req).read() # throw away it is only human readable HTML
     geoJsonUrl = "http://polygons.openstreetmap.fr/get_geojson.py?id={polygon}&params=0.000000-0.001000-0.005000".format(polygon=args.polygon)
     img = createMapFromUrl(geoJsonUrl) 
