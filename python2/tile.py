@@ -1,18 +1,30 @@
+#!/usr/bin/python
+from __future__ import print_function
 import json
 import math
+import sys
+import argparse
+import urllib
+import urllib2
 from operator import attrgetter
 from itertools import groupby
 from tileSet import TileSet
 from tileSet import Border
 from PIL import Image, ImageDraw
 
+def createMapFromUrl(geoJsonUrl):
+  geoJson = urllib.urlopen(geoJsonUrl).read()
+  return createMap(json.loads(geoJson))
+
+def createMapFromFile(geoJsonFileName):
+  with open(geoJsonFileName) as geoJson:
+    return createMap(json.load(geoJson))
+
 def createMap(geoJson):
-  with open(geoJson) as f:
-    geo = json.load(f)
-    assert geo['type']=='GeometryCollection'
-    assert len(geo['geometries']) == 1
-    assert geo['geometries'][0]['type']== 'MultiPolygon'
-    return test(geo['geometries'][0]['coordinates'])
+  assert geoJson['type']=='GeometryCollection'
+  assert len(geoJson['geometries']) == 1
+  assert geoJson['geometries'][0]['type']== 'MultiPolygon'
+  return test(geoJson['geometries'][0]['coordinates'])
 
 def test(multiPoly):
   assert multiPoly[0][0][0] == multiPoly[0][0][-1]
@@ -21,12 +33,12 @@ def test(multiPoly):
   ymin = min([p.y for p in outline])
   xmax = max([p.x for p in outline])
   ymax = max([p.y for p in outline])
-  xoff = math.floor(xmin)
-  yoff = math.floor(ymin)
-  xd = math.floor(xmax)-xoff
-  yd = math.floor(ymax)-yoff
-  print(f'x:{xmin}-{xmax} / {xoff}+{xd}')
-  print(f'y:{ymin}-{ymax} / {yoff}+{yd}')
+  xoff = int(math.floor(xmin))
+  yoff = int(math.floor(ymin))
+  xd = int(math.floor(xmax)-xoff)
+  yd = int(math.floor(ymax)-yoff)
+  print('x:{xmin}-{xmax} / {xoff}+{xd}'.format(xmin=xmin,xmax=xmax,xoff=xoff,xd=xd), file=sys.stderr)
+  print('y:{ymin}-{ymax} / {yoff}+{yd}'.format(ymin=ymin,ymax=ymax,yoff=yoff,yd=yd), file=sys.stderr)
   tileSet = [[Tile(x,y) for y in range(yd+1)] for x in range(xd+1)]
   for p in outline:
     p.x -= xoff
@@ -51,7 +63,8 @@ def test(multiPoly):
         for segment in tile.segments:
           if segment.crossIn.segmentIn.tile == segment.crossOut.segmentOut.tile and (len(tile.segments)>1 or len(segment.crossIn.segmentIn.tile.segments)>2):
             t = segment.crossIn.segmentIn.tile
-            print(f'Simplify segement in tile {t} with {len(t.segments)} segments')
+            l = len(t.segments)
+            print('Simplify segement in tile {t} with {l} segments'.format(t=t,l=l), file=sys.stderr)
             t.removeSegment(segment.crossIn.segmentIn)
             t.removeSegment(segment.crossOut.segmentOut)
             t.addSegment(Segment(segment.crossIn.segmentIn.crossIn, segment.crossOut.segmentOut.crossOut))
@@ -63,7 +76,8 @@ def test(multiPoly):
   for x,column in enumerate(tileSet):
     for y,tile in enumerate(column):
       if len(tile.segments) > 2:
-        print(f'WARNING: tile {tile} has {len(tile.segments)} segments')
+        l =len(tile.segments) 
+        print('WARNING: tile {tile} has {l} segments'.format(tile=tile, l=l), file=sys.stderr)
       segments = tuple([tuple([s.crossIn.borderIn, s.crossOut.borderOut]) for s in tile.segments[:2]])
       renderer.drawTileBySegments(draw,x,yd-y,segments)
   return img
@@ -77,7 +91,7 @@ def printLines(lines):
     print(l.end)
     print('-----')
 
-class Tile:
+class Tile(object):
   def __init__(self, x, y):
     self.x = x
     self.y = y
@@ -89,23 +103,23 @@ class Tile:
     self.segments.remove(segment)
     segment.tile = None
   def __str__(self):
-    return f'{self.x},{self.y}'
+    return '{self.x},{self.y}'.format(self=self)
 
-class Segment:
+class Segment(object):
   def __init__(self, crossIn, crossOut): # TODO tile needed?
     self.crossIn = crossIn
     self.crossOut = crossOut
     crossIn.segmentOut = self
     crossOut.segmentIn = self
   def __str__(self):
-    return f'{self.crossIn.borderIn}-{self.crossOut.borderOut}'
+    return '{self.crossIn.borderIn}-{self.crossOut.borderOut}'.format(self=self)
 
-class Cross:
+class Cross(object):
   def __init__(self, borderOut, borderIn):
     self.borderOut = borderOut
     self.borderIn = borderIn
 
-class Line:
+class Line(object):
   def __init__(self, start, end, tileSet):
     self.start = start
     self.end = end
@@ -113,15 +127,14 @@ class Line:
     end.lineIn = self
     self.points = []
     def fwdRange(a,b):
-      return range(math.ceil(a),math.ceil(b),1)
+      return (range(int(math.ceil(a)),int(math.ceil(b)),1), (-1,0))
     def bwdRange(a,b):
-      return range(math.floor(a),math.floor(b),-1)
+      return (range(int(math.floor(a)),int(math.floor(b)),-1), (0,-1))
     def innerRange(a,b):
       return fwdRange(a,b) if a<b else bwdRange(a,b)
     def interpolate(x,xs,xe,ys,ye):
       return (x-xs)*(ye-ys)/(xe-xs) + ys
-    gridRange = innerRange(self.start.x,self.end.x)
-    fromTo = gridRange.step==1 and (-1,0) or (0,-1)
+    (gridRange, fromTo) = innerRange(self.start.x,self.end.x)
     borders = [{-1: Border.RIGHT, 0: Border.LEFT}[ft] for ft in fromTo]
     for x in gridRange:
       y = interpolate(x, self.start.x, self.end.x, self.start.y, self.end.y)
@@ -129,8 +142,7 @@ class Line:
         x, y, tileSet[x+fromTo[0]][int(y)], tileSet[x+fromTo[1]][int(y)],
         borders[0], borders[1]
       )) 
-    gridRange = innerRange(self.start.y,self.end.y)
-    fromTo = gridRange.step==1 and (-1,0) or (0,-1)
+    (gridRange, fromTo)  = innerRange(self.start.y,self.end.y)
     borders = [{-1: Border.TOP, 0: Border.BOTTOM}[ft] for ft in fromTo]
     for y in gridRange:
       x = interpolate(y, self.start.y, self.end.y, self.start.x, self.end.x)
@@ -150,14 +162,14 @@ class Line:
       p1.tileIn.addSegment(Segment(p1.cross, p2.cross))
       
   def __str__(self):
-    return f'{self.start}-{self.end}'
+    return '{self.start}-{self.end}'.format(self=self)
 
-class Point:
+class Point(object):
   def __init__(self,x,y):
     self.x = x
     self.y = y
   def __str__(self):
-    return f'({self.x},{self.y}) '
+    return '({self.x},{self.y}) '.format(self=self)
 
 class BorderPoint(Point):
   def __init__(self,x,y,tileOut,tileIn,borderOut,borderIn):
@@ -165,14 +177,14 @@ class BorderPoint(Point):
     self.tileIn = tileIn
     self.borderOut = borderOut 
     self.borderIn = borderIn
-    super().__init__(x,y)
+    super(BorderPoint, self).__init__(x,y)
   def __str__(self):
-    return super().__str__()+f' [{self.tileOut}-{self.tileIn}] {self.borderOut}-{self.borderIn}'
+    return super(BorderPoint, self).__str__()+' [{self.tileOut}-{self.tileIn}] {self.borderOut}-{self.borderIn}'.format(self=self)
 
 class GeoPoint(Point):
   def __init__(self,latLong):
       (longitude, latitude) = latLong 
-      super().__init__(
+      super(GeoPoint, self).__init__(
         longitude * 111.320 * math.cos(math.radians(latitude)),
         latitude * 110.574
       )
@@ -183,7 +195,21 @@ class GeoPoint(Point):
     self.tile.addSegment(Segment(crossIn, crossOut))
 
 if __name__ == '__main__':
-  geoJson = sys.argv>1 and sys.argv[1] or 'simplified/osm-ruegen.geojson'
-  img = createMap(geoJson)
-  img.save(f'map.png', "png")
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--polygon', help='ID of OSM polygon')
+  parser.add_argument('--geojson', help='GeoJson file with polygon')
+  args = parser.parse_args()
+  
+  geoJson = args.geojson != None and args.geojson or 'simplified/osm-ruegen.geojson'
+  if args.geojson != None or args.polygon == None:
+    img = createMapFromFile(geoJson)
+  else:
+    req = urllib2.Request("http://polygons.openstreetmap.fr/?id={polygon}".format(polygon=args.polygon), 'x=0.000000&y=0.001000&z=0.005000&generate=Submit+Query')
+    urllib2.urlopen(req).read() # throw away it is only human readable HTML
+    geoJsonUrl = "http://polygons.openstreetmap.fr/get_geojson.py?id={polygon}&params=0.000000-0.001000-0.005000".format(polygon=args.polygon)
+    img = createMapFromUrl(geoJsonUrl) 
+
+  img.save('map.png', "png")
+  img.show()
+
 
