@@ -1,8 +1,9 @@
+#!/usr/bin/python
+from __future__ import print_function
 from PIL import Image, ImageDraw
 import sys
-from enum import IntEnum
 
-class Border(IntEnum):
+class Border():
   RIGHT = 1
   BOTTOM = 2
   LEFT = 3
@@ -13,7 +14,7 @@ L=Border.LEFT
 T=Border.TOP
 B=Border.BOTTOM
 
-class TileSet:
+class TileSet(object):
   coords = (
     (30,15),(30,10),(30,0),(20,0),(15,0),(10,0),(0,0),(0,10),
     (0,15),(0,20),(0,30),(10,30),(15,30),(20,30),(30,30),(30,20),
@@ -89,7 +90,7 @@ class TileSet:
     draw = ImageDraw.Draw(img)
     for i, tile in enumerate(self.tiles):
         self.drawTile(draw,i%6,int(i/6),tile)
-    img.save(f'tiles.png', "png")
+    img.save('tiles.png', "png")
 
   def drawTileByNumber(self, draw, x, y, tileNo):
     self.drawTile(draw, x, y, self.tiles[tileNo])
@@ -101,7 +102,7 @@ class TileSet:
       tile = reversedSegments in self.tilesDict and self.tilesDict[reversedSegments] or None
     if tile==None:
       if segments != ():
-        print(f'Not found: {segments}')
+        print('Not found: {segments}'.format(segments=segments), file=sys.stderr)
     else:
       self.drawTile(draw, x, y, tile)
 
