@@ -109,9 +109,7 @@ def tile(multiPoly):
             c.segmentIn.orderedIn = orderedBorder
           if c.segmentOut.tile == tile:
             c.segmentOut.orderedOut = orderedBorder
-      segments = tuple([tuple([s.crossIn.borderIn, s.crossOut.borderOut]) for s in tile.segments[:2]])
-      if tile.segments:
-        print([tuple([s.orderedIn,s.orderedOut]) for s in tile.segments])
+      segments = tuple([tuple([s.orderedOut,s.orderedIn]) for s in tile.segments])
       renderer.drawTileBySegments(draw,x,yd-y,segments)
   return img
 
