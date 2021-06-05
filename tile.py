@@ -11,26 +11,43 @@ from operator import attrgetter
 from itertools import groupby
 from tileSet import TileSet
 from tileSet import Border
+from tileSet import borders
 from PIL import Image, ImageDraw
+
+def createMap(geojson, polygon):
+  if geojson != None: 
+    return createMapFromFile(geojson)
+  elif polygon == None:
+    return createMapFromFile('osm-ruegen.geojson')
+  else:
+    return createMapFromOsm(polygon)
+
+def createMapFromOsm(polygon):
+  polygonUrl = "http://polygons.openstreetmap.fr/?id={polygon}".format(polygon=polygon)
+  urllib.urlopen(polygonUrl).read()
+  req = urllib2.Request(polygonUrl, 'x=0.000000&y=0.001000&z=0.005000&generate=Submit+Query')
+  urllib2.urlopen(req).read() # throw away it is only human readable HTML
+  geoJsonUrl = "http://polygons.openstreetmap.fr/get_geojson.py?id={polygon}&params=0.000000-0.001000-0.005000".format(polygon=polygon)
+  return createMapFromUrl(geoJsonUrl) 
 
 def createMapFromUrl(geoJsonUrl):
   geoJson = urllib.urlopen(geoJsonUrl).read()
-  return createMap(json.loads(geoJson))
+  return createMapFromJson(json.loads(geoJson))
 
 def createMapFromFile(geoJsonFileName):
   with open(geoJsonFileName) as geoJson:
-    return createMap(json.load(geoJson))
+    return createMapFromJson(json.load(geoJson))
 
-def createMap(geoJson):
+def createMapFromJson(geoJson):
   assert geoJson['type']=='GeometryCollection' or geoJson['type']=='MultiPolygon'
   if geoJson['type'] == 'MultiPolygon':
-    return test(geoJson['coordinates'])
+    return tile(geoJson['coordinates'])
   else:
     assert len(geoJson['geometries']) == 1
     assert geoJson['geometries'][0]['type']== 'MultiPolygon'
-    return test(geoJson['geometries'][0]['coordinates'])
+    return tile(geoJson['geometries'][0]['coordinates'])
 
-def test(multiPoly):
+def tile(multiPoly):
   assert multiPoly[0][0][0] == multiPoly[0][0][-1]
   outline = [GeoPoint(p) for p in reversed(max([poly[0] for poly in multiPoly],key=len))]
   # TODO reverse depending on orientation
@@ -51,6 +68,7 @@ def test(multiPoly):
     p.tile = tileSet[int(p.x)][int(p.y)]
   outline.pop() # should be same as first
   lastTile = outline[-1].tile
+  # assert that not all points in one tile?
   while lastTile == outline[0].tile:
     outline.append(outline.pop(0))
   outline.append(outline[0])
@@ -78,23 +96,24 @@ def test(multiPoly):
   img = Image.new(mode="L", size=((xd+1)*30,(yd+1)*30), color=128)
   draw = ImageDraw.Draw(img)
   renderer = TileSet()
+  ## TODO remove either enumeration or tile.x/y
   for x,column in enumerate(tileSet):
     for y,tile in enumerate(column):
       if len(tile.segments) > 2:
         l =len(tile.segments) 
         print('WARNING: tile {tile} has {l} segments'.format(tile=tile, l=l), file=sys.stderr)
+      for side in [Border.RIGHT, Border.TOP, Border.LEFT, Border.BOTTOM]:
+        crosses =  sorted(tile.crossesOnSide(side), key=attrgetter('position'))
+        for (c, orderedBorder) in zip(crosses, borders[side]):
+          if c.segmentIn.tile == tile:
+            c.segmentIn.orderedIn = orderedBorder
+          if c.segmentOut.tile == tile:
+            c.segmentOut.orderedOut = orderedBorder
       segments = tuple([tuple([s.crossIn.borderIn, s.crossOut.borderOut]) for s in tile.segments[:2]])
+      if tile.segments:
+        print([tuple([s.orderedIn,s.orderedOut]) for s in tile.segments])
       renderer.drawTileBySegments(draw,x,yd-y,segments)
   return img
-
-
-def printLines(lines):
-  for l in lines:
-    print(l.start)
-    for p in l.points:
-      print(p)
-    print(l.end)
-    print('-----')
 
 class Tile(object):
   def __init__(self, x, y):
@@ -107,6 +126,12 @@ class Tile(object):
   def removeSegment(self,segment):
     self.segments.remove(segment)
     segment.tile = None
+  def crossesOnSide(self, side):
+    for s in self.segments:
+      if s.crossIn.borderIn == side:
+        yield s.crossIn
+      if s.crossOut.borderOut == side:
+        yield s.crossOut
   def __str__(self):
     return '{self.x},{self.y}'.format(self=self)
 
@@ -159,9 +184,14 @@ class Line(object):
       self.points.sort(key=attrgetter('x'),reverse=self.start.x>self.end.x) 
     else:
       self.points.sort(key=attrgetter('y'),reverse=self.start.y>self.end.y) 
+
   def addSegments(self):
     for p in self.points:
       p.cross = Cross(p.borderOut,p.borderIn)
+      if p.borderOut in [Border.RIGHT, Border.LEFT]:
+        p.cross.position = p.y - int(p.y)
+      else:
+        p.cross.position = p.x - int(p.x)
     for p1,p2 in zip(self.points[:-1],self.points[1:]):
       assert p1.tileIn == p2.tileOut
       p1.tileIn.addSegment(Segment(p1.cross, p2.cross))
@@ -206,16 +236,7 @@ if __name__ == '__main__':
   parser.add_argument('--geojson', help='GeoJson file with polygon')
   args = parser.parse_args()
   
-  geoJson = args.geojson != None and args.geojson or 'simplified/osm-ruegen.geojson'
-  if args.geojson != None or args.polygon == None:
-    img = createMapFromFile(geoJson)
-  else:
-    polygonUrl = "http://polygons.openstreetmap.fr/?id={polygon}".format(polygon=args.polygon)
-    urllib.urlopen(polygonUrl).read()
-    req = urllib2.Request(polygonUrl, 'x=0.000000&y=0.001000&z=0.005000&generate=Submit+Query')
-    urllib2.urlopen(req).read() # throw away it is only human readable HTML
-    geoJsonUrl = "http://polygons.openstreetmap.fr/get_geojson.py?id={polygon}&params=0.000000-0.001000-0.005000".format(polygon=args.polygon)
-    img = createMapFromUrl(geoJsonUrl) 
+  img = createMap(args.geojson, args.polygon)
 
   img.save('map.png', "png")
   img.show()

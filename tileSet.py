@@ -7,12 +7,41 @@ class Border():
   RIGHT = 1
   BOTTOM = 2
   LEFT = 3
-  TOP = 4
+  TOP = 4 
+
+class BorderOrdered():
+  R1 = 1
+  R2 = 2
+  R3 = 3
+  B1 = 4
+  B2 = 5
+  B3 = 6
+  L1 = 7
+  L2 = 8
+  L3 = 9
+  T1 = 10
+  T2 = 11
+  T3 = 12
 
 R=Border.RIGHT
 L=Border.LEFT
 T=Border.TOP
 B=Border.BOTTOM
+
+R1=BorderOrdered.R1
+R2=BorderOrdered.R2
+R3=BorderOrdered.R3
+L1=BorderOrdered.L1
+L2=BorderOrdered.L2
+L3=BorderOrdered.L3
+T1=BorderOrdered.T1
+T2=BorderOrdered.T2
+T3=BorderOrdered.T3
+B1=BorderOrdered.B1
+B2=BorderOrdered.B2
+B3=BorderOrdered.B3
+
+borders = {R: (R1,R2,R3), T: (T1,T2,T3), L: (L1,L2,L3), B: (B1,B2,B3)}
 
 class TileSet(object):
   coords = (
