@@ -103,7 +103,7 @@ class TileSet(object):
     ((L1,B1),(B2,T1)): ((4,6,8,11,13),) ,
     ((T1,B2),(B1,L1)): ((8,11,10),(13,14,2,4)),
     ((L1,B1),(B2,L2)): ((9,11,13,7),),
-    ((L2,B2),(B1,L2)): ((9,10,11),(13,14,2,6,7)),
+    ((L2,B2),(B1,L1)): ((9,10,11),(13,14,2,6,7)),
     (): (),
     ((),()): ((2,6,10,14),),
     ((R2,R1),): ((1,16,19,15),),
@@ -136,6 +136,18 @@ class TileSet(object):
     else:
       tile = self.tilesDict[sortedSegments]
       self.drawTile(draw, x, y, tile)
+
+  def landToTheRight(self, segments):
+    sortedSegments = tuple(sorted(segments))
+    if sortedSegments in self.tilesDict:
+      tile = self.tilesDict[sortedSegments]
+      return any((all((p in poly for p in (2,6))) for poly in tile))
+
+  def seaToTheRight(self, segments):
+    sortedSegments = tuple(sorted(segments))
+    if sortedSegments in self.tilesDict:
+      tile = self.tilesDict[sortedSegments]
+      return all((not any((p in poly for p in (2,3,4,5,6))) for poly in tile))
 
   def drawTile(self, draw, x, y, tile):
     for poly in tile:

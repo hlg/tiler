@@ -22,32 +22,40 @@ def createMap(geojson, polygon):
   else:
     return createMapFromOsm(polygon)
 
-def createMapFromOsm(polygon):
+def geoJsonUrl(polygon):
   polygonUrl = "http://polygons.openstreetmap.fr/?id={polygon}".format(polygon=polygon)
   urllib.urlopen(polygonUrl).read()
   req = urllib2.Request(polygonUrl, 'x=0.000000&y=0.001000&z=0.005000&generate=Submit+Query')
   urllib2.urlopen(req).read() # throw away it is only human readable HTML
-  geoJsonUrl = "http://polygons.openstreetmap.fr/get_geojson.py?id={polygon}&params=0.000000-0.001000-0.005000".format(polygon=polygon)
-  return createMapFromUrl(geoJsonUrl) 
+  return "http://polygons.openstreetmap.fr/get_geojson.py?id={polygon}&params=0.000000-0.001000-0.005000".format(polygon=polygon)
+
+def createMapFromOsm(polygon):
+  return createMapFromUrl(geoJsonUrl(polygon)) 
+
+def jsonFromUrl(geoJsonUrl):
+  geoJson = urllib.urlopen(geoJsonUrl).read()
+  return json.loads(geoJson)
 
 def createMapFromUrl(geoJsonUrl):
-  geoJson = urllib.urlopen(geoJsonUrl).read()
-  return createMapFromJson(json.loads(geoJson))
+  return createMapFromJson(jsonFromUrl(geoJsonUrl))
 
 def createMapFromFile(geoJsonFileName):
   with open(geoJsonFileName) as geoJson:
     return createMapFromJson(json.load(geoJson))
 
-def createMapFromJson(geoJson):
+def multiPolyCoords(geoJson):
   assert geoJson['type']=='GeometryCollection' or geoJson['type']=='MultiPolygon'
   if geoJson['type'] == 'MultiPolygon':
     return tile(geoJson['coordinates'])
   else:
     assert len(geoJson['geometries']) == 1
     assert geoJson['geometries'][0]['type']== 'MultiPolygon'
-    return tile(geoJson['geometries'][0]['coordinates'])
+    return geoJson['geometries'][0]['coordinates']
 
-def tile(multiPoly):
+def createMapFromJson(geoJson):
+  return tile(multiPolyCoords(geoJson))
+
+def boundingBox(multiPoly):
   assert multiPoly[0][0][0] == multiPoly[0][0][-1]
   outline = [GeoPoint(p) for p in reversed(max([poly[0] for poly in multiPoly],key=len))]
   # TODO reverse depending on orientation
@@ -61,6 +69,10 @@ def tile(multiPoly):
   yd = int(math.floor(ymax)-yoff)
   print('x:{xmin}-{xmax} / {xoff}+{xd}'.format(xmin=xmin,xmax=xmax,xoff=xoff,xd=xd), file=sys.stderr)
   print('y:{ymin}-{ymax} / {yoff}+{yd}'.format(ymin=ymin,ymax=ymax,yoff=yoff,yd=yd), file=sys.stderr)
+  return (outline, xmin, ymin, xmax, ymax, xoff, yoff, xd, yd)
+
+def tile(multiPoly):
+  (outline, xmin, ymin, xmax, ymax, xoff, yoff, xd, yd) = boundingBox(multiPoly)
   tileSet = [[Tile(x,y) for y in range(yd+1)] for x in range(xd+1)]
   for p in outline:
     p.x -= xoff
@@ -97,6 +109,7 @@ def tile(multiPoly):
   draw = ImageDraw.Draw(img)
   renderer = TileSet()
   ## TODO remove either enumeration or tile.x/y
+  onLand = False
   for x,column in enumerate(tileSet):
     for y,tile in enumerate(column):
       if len(tile.segments) > 2:
@@ -110,6 +123,12 @@ def tile(multiPoly):
           if c.segmentOut.tile == tile:
             c.segmentOut.orderedOut = orderedBorder
       segments = tuple([tuple([s.orderedOut,s.orderedIn]) for s in tile.segments])
+      if segments and not onLand and renderer.landToTheRight(segments):
+        onLand = True
+      if segments and onLand and renderer.seaToTheRight(segments):
+        onLand = False
+      if not segments and onLand:
+        segments = ((),())
       renderer.drawTileBySegments(draw,x,yd-y,segments)
   return img
 
