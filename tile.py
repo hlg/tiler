@@ -14,71 +14,76 @@ from tileSet import Border
 from tileSet import borders
 from PIL import Image, ImageDraw
 
-def createMap(geojson, polygon):
+def jsonFromFileOrPolygon(geojson, polygon):
   if geojson != None: 
-    return createMapFromFile(geojson)
+    return jsonFromFile(geojson)
   elif polygon == None:
-    return createMapFromFile('osm-ruegen.geojson')
+    return jsonFromFile('osm-ruegen.geojson')
   else:
-    return createMapFromOsm(polygon)
+    return jsonFromPolygon(polygon)
 
-def geoJsonUrl(polygon):
+def urlFromPolygon(polygon):
   polygonUrl = "http://polygons.openstreetmap.fr/?id={polygon}".format(polygon=polygon)
   urllib.urlopen(polygonUrl).read()
   req = urllib2.Request(polygonUrl, 'x=0.000000&y=0.001000&z=0.005000&generate=Submit+Query')
   urllib2.urlopen(req).read() # throw away it is only human readable HTML
   return "http://polygons.openstreetmap.fr/get_geojson.py?id={polygon}&params=0.000000-0.001000-0.005000".format(polygon=polygon)
 
-def createMapFromOsm(polygon):
-  return createMapFromUrl(geoJsonUrl(polygon)) 
+def jsonFromPolygon(polygon):
+  return jsonFromUrl(urlFromPolygon(polygon))
 
 def jsonFromUrl(geoJsonUrl):
   geoJson = urllib.urlopen(geoJsonUrl).read()
   return json.loads(geoJson)
 
-def createMapFromUrl(geoJsonUrl):
-  return createMapFromJson(jsonFromUrl(geoJsonUrl))
-
-def createMapFromFile(geoJsonFileName):
+def jsonFromFile(geoJsonFileName):
   with open(geoJsonFileName) as geoJson:
-    return createMapFromJson(json.load(geoJson))
+    return json.load(geoJson)
 
 def multiPolyCoords(geoJson):
   assert geoJson['type']=='GeometryCollection' or geoJson['type']=='MultiPolygon'
   if geoJson['type'] == 'MultiPolygon':
-    return tile(geoJson['coordinates'])
+    return geoJson['coordinates']
   else:
     assert len(geoJson['geometries']) == 1
     assert geoJson['geometries'][0]['type']== 'MultiPolygon'
     return geoJson['geometries'][0]['coordinates']
 
-def createMapFromJson(geoJson):
-  return tile(multiPolyCoords(geoJson))
+def createMap(geoJson, scale=1):
+  return tile(multiPolyCoords(geoJson), scale)
 
-def boundingBox(multiPoly):
-  assert multiPoly[0][0][0] == multiPoly[0][0][-1]
-  outline = [GeoPoint(p) for p in reversed(max([poly[0] for poly in multiPoly],key=len))]
+def boundingBox(outline):
   # TODO reverse depending on orientation
   xmin = min([p.x for p in outline])
   ymin = min([p.y for p in outline])
   xmax = max([p.x for p in outline])
   ymax = max([p.y for p in outline])
+  return (xmin, ymin, xmax, ymax)
+
+def outlineFromPoly(multiPoly):
+  return [GeoPoint(p) for p in reversed(max([poly[0] for poly in multiPoly],key=len))]
+
+def tile(multiPoly, scale):
+  outline = outlineFromPoly(multiPoly) 
+  (xmin, ymin, xmax, ymax) = boundingBox(outline)
+  for p in outline:
+    p.x = (p.x -xmin) * scale
+    p.y = (p.y -ymin) * scale
+
+  (xmin, ymin, xmax, ymax) = boundingBox(outline)
   xoff = int(math.floor(xmin))
   yoff = int(math.floor(ymin))
   xd = int(math.floor(xmax)-xoff)
   yd = int(math.floor(ymax)-yoff)
   print('x:{xmin}-{xmax} / {xoff}+{xd}'.format(xmin=xmin,xmax=xmax,xoff=xoff,xd=xd), file=sys.stderr)
   print('y:{ymin}-{ymax} / {yoff}+{yd}'.format(ymin=ymin,ymax=ymax,yoff=yoff,yd=yd), file=sys.stderr)
-  return (outline, xmin, ymin, xmax, ymax, xoff, yoff, xd, yd)
 
-def tile(multiPoly):
-  (outline, xmin, ymin, xmax, ymax, xoff, yoff, xd, yd) = boundingBox(multiPoly)
   tileSet = [[Tile(x,y) for y in range(yd+1)] for x in range(xd+1)]
   for p in outline:
-    p.x -= xoff
-    p.y -= yoff
     p.tile = tileSet[int(p.x)][int(p.y)]
-  outline.pop() # should be same as first
+  print("tile set size:", len(tileSet), len(tileSet[0]))
+  assert outline[0].x == outline[-1].x and outline[0].y == outline[-1].y
+  outline.pop()
   lastTile = outline[-1].tile
   # assert that not all points in one tile?
   while lastTile == outline[0].tile:
@@ -87,7 +92,6 @@ def tile(multiPoly):
   lines = [Line(s,e,tileSet) for [s,e] in zip(outline[:-1],outline[1:])] 
   for l in lines:
     l.addSegments()
-  
   for tile, points in groupby(outline[:-1], key=attrgetter('tile')):
     pointsInSameTile = list(points)
     crossIn = pointsInSameTile[0].lineIn.points[-1].cross
@@ -239,7 +243,6 @@ class GeoPoint(Point):
       super(GeoPoint, self).__init__(
         longitude * 111.1949, # 6371/360*2pi
         math.log(math.tan(math.radians(latitude)/2 + math.pi/4)) * 6371
-
       )
   def addSegment(self):
     crossIn = self.lineIn.points[-1].cross
@@ -251,9 +254,10 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--polygon', help='ID of OSM polygon')
   parser.add_argument('--geojson', help='GeoJson file with polygon')
+  parser.add_argument('--scale', help='scale')
   args = parser.parse_args()
   
-  img = createMap(args.geojson, args.polygon)
+  img = createMap(jsonFromFileOrPolygon(args.geojson, args.polygon), 1 if args.scale is None else float(args.scale))
 
   img.save('map.png', "png")
   img.show()
