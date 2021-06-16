@@ -22,15 +22,16 @@ def jsonFromFileOrPolygon(geojson, polygon):
   else:
     return jsonFromPolygon(polygon)
 
-def urlFromPolygon(polygon):
+def jsonFromPolygon(polygon, params=(0.000000,0.001000,0.005000)):
   polygonUrl = "http://polygons.openstreetmap.fr/?id={polygon}".format(polygon=polygon)
   urllib.urlopen(polygonUrl).read()
-  req = urllib2.Request(polygonUrl, 'x=0.000000&y=0.001000&z=0.005000&generate=Submit+Query')
-  urllib2.urlopen(req).read() # throw away it is only human readable HTML
-  return "http://polygons.openstreetmap.fr/get_geojson.py?id={polygon}&params=0.000000-0.001000-0.005000".format(polygon=polygon)
-
-def jsonFromPolygon(polygon):
-  return jsonFromUrl(urlFromPolygon(polygon))
+  if params is None:
+    url = "http://polygons.openstreetmap.fr/get_geojson.py?id={polygon}&params=0".format(polygon=polygon)
+  else:
+    req = urllib2.Request(polygonUrl, 'x={x:.6f}&y={y:.6f}&z={z:.6f}&generate=Submit+Query'.format(x=params[0], y=params[1], z=params[2]))
+    urllib2.urlopen(req).read() # throw away it is only human readable HTML
+    url = "http://polygons.openstreetmap.fr/get_geojson.py?id={polygon}&params={x:.6f}-{y:.6f}-{z:.6f}".format(polygon=polygon, x=params[0], y=params[1], z=params[2])
+  return jsonFromUrl(url)
 
 def jsonFromUrl(geoJsonUrl):
   geoJson = urllib.urlopen(geoJsonUrl).read()
