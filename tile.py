@@ -67,15 +67,17 @@ def outlineFromPoly(multiPoly):
 def tile(multiPoly, scale):
   outline = outlineFromPoly(multiPoly) 
   (xmin, ymin, xmax, ymax) = boundingBox(outline)
+  print('unscaled x:{xmin}-{xmax}'.format(xmin=xmin,xmax=xmax), file=sys.stderr)
+  print('unscaled y:{ymin}-{ymax}'.format(ymin=ymin,ymax=ymax), file=sys.stderr)
   for p in outline:
-    p.x = (p.x -xmin) * scale
-    p.y = (p.y -ymin) * scale
+    p.x = p.x * scale - math.floor(xmin * scale)
+    p.y = p.y * scale - math.floor(ymin * scale)
 
   (xmin, ymin, xmax, ymax) = boundingBox(outline)
   xoff = int(math.floor(xmin))
   yoff = int(math.floor(ymin))
-  xd = int(math.floor(xmax)-xoff)
-  yd = int(math.floor(ymax)-yoff)
+  xd = int(math.floor(xmax))-xoff
+  yd = int(math.floor(ymax))-yoff
   print('x:{xmin}-{xmax} / {xoff}+{xd}'.format(xmin=xmin,xmax=xmax,xoff=xoff,xd=xd), file=sys.stderr)
   print('y:{ymin}-{ymax} / {yoff}+{yd}'.format(ymin=ymin,ymax=ymax,yoff=yoff,yd=yd), file=sys.stderr)
 

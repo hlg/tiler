@@ -57,9 +57,16 @@ islands = [
 def downloadList():
   for island in islands:
     print(island.name)
-    download(island.name, island.polygon)
+    geoJson = download(island.name, island.polygon)
+    downloadSimplified(geoJson, island.name, island.polygon)
 
-def download(name, polygon):
+def downloadSimplifiedList():
+  for island in islands:
+    print(island.name)
+    geoJson = jsonFromFile("selectedIslands/"+island.name.replace(" ","")+"_original.json")
+    downloadSimplified(geoJson, island.name, island.polygon)
+
+def downloadOriginal(name, polygon):
     if not os.path.exists("selectedIslands"):
       try:
         os.makedirs("selectedIslands")
@@ -69,7 +76,10 @@ def download(name, polygon):
     geoJson = jsonFromPolygon(polygon, params=None)
     with open("selectedIslands/"+name.replace(" ","")+"_original.json", "w") as geoJsonFile:
       json.dump(geoJson, geoJsonFile) 
-    ext = latLongExtension(geoJson)/499
+    return geoJson
+
+def downloadSimplified(geoJson, name, polygon):
+    ext = latLongExtension(geoJson)/750
     geoJsonSimplified = jsonFromPolygon(polygon, params=(0.,ext,ext))
     with open("selectedIslands/"+name.replace(" ","")+"_simplified.json", "w") as geoJsonFile:
       json.dump(geoJsonSimplified, geoJsonFile) 
@@ -93,14 +103,16 @@ def latLongExtension(geoJson):
 
 def readAndMap():
  for island in islands:
-    print(island.name, island.zoom)
     shortIslandName = island.name.replace(" ","")
     geoJson = jsonFromFile("selectedIslands/"+shortIslandName+"_simplified.json")
     scale = scaleFor(geoJson)
-    print(scale)
+    print("==============")
+    print(island.name, island.zoom, scale)
+    print("simplification factor: ", latLongExtension(geoJson)/750)
     img = createMap(geoJson, scale=scale)
     img.save('selectedIslands/'+shortIslandName+".png")
 
 if __name__ == "__main__":
-   readAndMap()
+  readAndMap()
+  # downloadSimplifiedList()
 
