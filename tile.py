@@ -112,7 +112,7 @@ def tile(multiPoly, scale):
             t.addSegment(Segment(segment.crossIn.segmentIn.crossIn, segment.crossOut.segmentOut.crossOut))
             tile.removeSegment(segment)
 
-  img = Image.new(mode="L", size=((xd+1)*30,(yd+1)*30), color=128)
+  img = Image.new(mode="LA", size=((xd+1)*30,(yd+1)*30))
   draw = ImageDraw.Draw(img)
   renderer = TileSet()
   ## TODO remove either enumeration or tile.x/y

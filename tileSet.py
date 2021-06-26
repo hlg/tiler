@@ -118,11 +118,12 @@ class TileSet(object):
 
   tiles = list(tilesDict.values())
 
-  def tileSet(self):
-    img = Image.new(mode="L", size=(6*30,12*30), color=128)
+  def tileSet(self, columns):
+    rows = len(self.tiles)/columns + (1 if len(self.tiles)%columns else 0)
+    img = Image.new(mode="LA", size=(columns*30,rows*30))
     draw = ImageDraw.Draw(img)
     for i, tile in enumerate(self.tiles):
-        self.drawTile(draw,i%6,int(i/6),tile)
+        self.drawTile(draw,i%columns,int(i/columns),tile)
     img.save('tiles.png', "png")
 
   def drawTileByNumber(self, draw, x, y, tileNo):
@@ -152,8 +153,8 @@ class TileSet(object):
   def drawTile(self, draw, x, y, tile):
     for poly in tile:
       points = [(self.coords[p][0]+x*30, self.coords[p][1]+y*30) for p in poly]
-      draw.polygon(points, fill=255, outline=0)
+      draw.polygon(points, fill=(255,255), outline=(0,255))
 
 if __name__ == "__main__":
-  TileSet().tileSet()
+  TileSet().tileSet(4)
 
