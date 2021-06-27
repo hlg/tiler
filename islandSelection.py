@@ -1,5 +1,5 @@
-from tile import jsonFromPolygon, jsonFromFile, multiPolyCoords, boundingBox, createMap, outlineFromPoly
-import os, math, json
+from tile import jsonFromPolygon, jsonFromFile, multiPolyCoords, createMap, scaleFor, createTileIndex
+import os, math, json, wamap
 
 class Island:
   def __init__(self, name, zoom, polygon):
@@ -84,14 +84,6 @@ def downloadSimplified(geoJson, name, polygon):
     with open("selectedIslands/"+name.replace(" ","")+"_simplified.json", "w") as geoJsonFile:
       json.dump(geoJsonSimplified, geoJsonFile) 
 
-def scaleFor(geoJson):
-    (xmin, ymin, xmax, ymax) = boundingBox(outlineFromPoly(multiPolyCoords(geoJson)))
-    maxExt = max(xmax-xmin, ymax-ymin)
-    z = math.log(40100. / maxExt) / math.log(2)
-    t = 200. - 10 * z
-    print(z, t) 
-    return  t / maxExt 
-
 def latLongExtension(geoJson):
     multiPoly = multiPolyCoords(geoJson)
     outlineLongLat = max([poly[0] for poly in multiPoly],key=len)
@@ -101,18 +93,41 @@ def latLongExtension(geoJson):
     minLat = min([longLat[1] for longLat in outlineLongLat])
     return max([maxLong-minLong, maxLat-minLat])
 
-def readAndMap():
+def readAndMap(action):
  for island in islands:
     shortIslandName = island.name.replace(" ","")
     geoJson = jsonFromFile("selectedIslands/"+shortIslandName+"_simplified.json")
-    scale = scaleFor(geoJson)
     print("==============")
-    print(island.name, island.zoom, scale)
+    print(island.name, island.zoom, scaleFor(geoJson))
     print("simplification factor: ", latLongExtension(geoJson)/750)
-    img = createMap(geoJson, scale=scale)
-    img.save('selectedIslands/'+shortIslandName+".png")
+    action(geoJson, shortIslandName)
+
+def image(geoJson, shortIslandName):
+  img = createMap(geoJson)
+  img.save('selectedIslands/'+shortIslandName+".png")
+   
+def tileIndex(geoJson, shortIslandName):
+  data = createTileIndex(geoJson)
+  wamap.mapWidth = data["width"]
+  wamap.mapHeight = data["height"]
+  index = [d+1 for d in data["index"]]
+  start = [2 if d==2 else 0 for d in index]
+  mapJson = wamap.island(index, start)
+  with open('selectedIslands/'+shortIslandName+'-map.json', 'w') as f:
+    json.dump(mapJson, f)
+
+def islandIndex():
+  for island in islands:
+    shortIslandName = island.name.replace(" ","")
+    print('* {name}: [WA map]({wa}), [OSM]({osm}), [Wikipedia]({wiki})'.format(
+      name=island.name, 
+      wa='islands/'+shortIslandName+'-map.json',
+      osm='https://www.openstreetmap.org/relation/'+str(island.polygon),
+      wiki='https://en.wikipedia.org/wiki/'+island.name
+    ))
 
 if __name__ == "__main__":
-  readAndMap()
+  readAndMap(tileIndex)
+  # readAndMap(image)
   # downloadSimplifiedList()
 

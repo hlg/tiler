@@ -45,9 +45,9 @@ borders = {R: (R1,R2,R3), T: (T1,T2,T3), L: (L1,L2,L3), B: (B1,B2,B3)}
 
 class TileSet(object):
   coords = (
-    (30,15),(30,10),(30,0),(20,0),(15,0),(10,0),(0,0),(0,10),
-    (0,15),(0,20),(0,30),(10,30),(15,30),(20,30),(30,30),(30,20),
-    (20,10),(10,10),(10,20),(20,20)
+    (32,16),(32,11),(32,0),(21,0),(16,0),(11,0),(0,0),(0,11),
+    (0,16),(0,21),(0,32),(11,32),(16,32),(21,32),(32,32),(32,21),
+    (21,11),(11,11),(11,21),(21,21)
   )
   tilesDict = {
     # one border segment
@@ -116,11 +116,12 @@ class TileSet(object):
     ((B1,B2),): ((11,18,19,13,14,2,6,10),)
   }
 
-  tiles = list(tilesDict.values())
+  tileKeys = sorted(tilesDict)
+  tiles = [tilesDict[key] for key in tileKeys]
 
   def tileSet(self, columns):
     rows = len(self.tiles)/columns + (1 if len(self.tiles)%columns else 0)
-    img = Image.new(mode="LA", size=(columns*30,rows*30))
+    img = Image.new(mode="LA", size=(columns*32,rows*32))
     draw = ImageDraw.Draw(img)
     for i, tile in enumerate(self.tiles):
         self.drawTile(draw,i%columns,int(i/columns),tile)
@@ -138,6 +139,14 @@ class TileSet(object):
       tile = self.tilesDict[sortedSegments]
       self.drawTile(draw, x, y, tile)
 
+  def getTileIndex(self, segments):
+    sortedSegments = tuple(sorted(segments))
+    if not sortedSegments in self.tilesDict:
+      print('Not found: {segments}'.format(segments=segments), file=sys.stderr)
+      return 62
+    else:
+      return self.tileKeys.index(sortedSegments)
+
   def landToTheRight(self, segments):
     sortedSegments = tuple(sorted(segments))
     if sortedSegments in self.tilesDict:
@@ -152,7 +161,7 @@ class TileSet(object):
 
   def drawTile(self, draw, x, y, tile):
     for poly in tile:
-      points = [(self.coords[p][0]+x*30, self.coords[p][1]+y*30) for p in poly]
+      points = [(self.coords[p][0]+x*32, self.coords[p][1]+y*32) for p in poly]
       draw.polygon(points, fill=(255,255), outline=(0,255))
 
 if __name__ == "__main__":

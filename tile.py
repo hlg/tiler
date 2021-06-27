@@ -50,8 +50,33 @@ def multiPolyCoords(geoJson):
     assert geoJson['geometries'][0]['type']== 'MultiPolygon'
     return geoJson['geometries'][0]['coordinates']
 
-def createMap(geoJson, scale=1):
-  return tile(multiPolyCoords(geoJson), scale)
+def scaleFor(geoJson):
+    (xmin, ymin, xmax, ymax) = boundingBox(outlineFromPoly(multiPolyCoords(geoJson)))
+    maxExt = max(xmax-xmin, ymax-ymin)
+    z = math.log(40100. / maxExt) / math.log(2)
+    t = 200. - 10 * z
+    print(z, t, file=sys.stderr) 
+    return  t / maxExt 
+
+def createMap(geoJson, scale=None):
+  if scale is None:
+    scale = scaleFor(geoJson)
+  tileMap = tile(multiPolyCoords(geoJson), scale)
+  img = Image.new(mode="LA", size=(len(tileMap)*32,len(tileMap[0])*32))
+  tileSet = TileSet()
+  render(tileMap, tileSet, ImageRenderer(img, tileSet))
+  return img
+
+def createTileIndex(geoJson, scale=None):
+  if scale is None:
+    scale = scaleFor(geoJson)
+  tileMap = tile(multiPolyCoords(geoJson), scale)
+  tileSet = TileSet()
+  mapWidth = len(tileMap)
+  mapHeight = len(tileMap[0])
+  index = [0] * (mapWidth * mapHeight)
+  render(tileMap, tileSet, TileIndexRenderer(index, tileSet, mapWidth, mapHeight))
+  return {"index": index, "width": mapWidth, "height": mapHeight }
 
 def boundingBox(outline):
   # TODO reverse depending on orientation
@@ -81,10 +106,10 @@ def tile(multiPoly, scale):
   print('x:{xmin}-{xmax} / {xoff}+{xd}'.format(xmin=xmin,xmax=xmax,xoff=xoff,xd=xd), file=sys.stderr)
   print('y:{ymin}-{ymax} / {yoff}+{yd}'.format(ymin=ymin,ymax=ymax,yoff=yoff,yd=yd), file=sys.stderr)
 
-  tileSet = [[Tile(x,y) for y in range(yd+1)] for x in range(xd+1)]
+  tileMap = [[Tile(x,y) for y in range(yd+1)] for x in range(xd+1)]
   for p in outline:
-    p.tile = tileSet[int(p.x)][int(p.y)]
-  print("tile set size:", len(tileSet), len(tileSet[0]))
+    p.tile = tileMap[int(p.x)][int(p.y)]
+  print("tile set size:", len(tileMap), len(tileMap[0]), file=sys.stderr)
   assert outline[0].x == outline[-1].x and outline[0].y == outline[-1].y
   outline.pop()
   lastTile = outline[-1].tile
@@ -92,7 +117,7 @@ def tile(multiPoly, scale):
   while lastTile == outline[0].tile:
     outline.append(outline.pop(0))
   outline.append(outline[0])
-  lines = [Line(s,e,tileSet) for [s,e] in zip(outline[:-1],outline[1:])] 
+  lines = [Line(s,e,tileMap) for [s,e] in zip(outline[:-1],outline[1:])] 
   for l in lines:
     l.addSegments()
   for tile, points in groupby(outline[:-1], key=attrgetter('tile')):
@@ -100,7 +125,7 @@ def tile(multiPoly, scale):
     crossIn = pointsInSameTile[0].lineIn.points[-1].cross
     crossOut = pointsInSameTile[-1].lineOut.points[0].cross
     tile.addSegment(Segment(crossIn, crossOut))
-  for column in tileSet:
+  for column in tileMap:
     for tile in column:
         for segment in tile.segments:
           if segment.crossIn.segmentIn.tile == segment.crossOut.segmentOut.tile and (len(tile.segments)>1 or len(segment.crossIn.segmentIn.tile.segments)>2):
@@ -111,13 +136,13 @@ def tile(multiPoly, scale):
             t.removeSegment(segment.crossOut.segmentOut)
             t.addSegment(Segment(segment.crossIn.segmentIn.crossIn, segment.crossOut.segmentOut.crossOut))
             tile.removeSegment(segment)
+  return tileMap
 
-  img = Image.new(mode="LA", size=((xd+1)*30,(yd+1)*30))
-  draw = ImageDraw.Draw(img)
-  renderer = TileSet()
+def render(tileMap, tileSet, renderer):
+  yd = len(tileMap[0]) # that should not be necessary
   ## TODO remove either enumeration or tile.x/y
   onLand = False
-  for x,column in enumerate(tileSet):
+  for x,column in enumerate(tileMap):
     for y,tile in enumerate(column):
       if len(tile.segments) > 2:
         l =len(tile.segments) 
@@ -130,14 +155,29 @@ def tile(multiPoly, scale):
           if c.segmentOut.tile == tile:
             c.segmentOut.orderedOut = orderedBorder
       segments = tuple([tuple([s.orderedOut,s.orderedIn]) for s in tile.segments])
-      if segments and not onLand and renderer.landToTheRight(segments):
+      if segments and not onLand and tileSet.landToTheRight(segments):
         onLand = True
-      if segments and onLand and renderer.seaToTheRight(segments):
+      if segments and onLand and tileSet.seaToTheRight(segments):
         onLand = False
       if not segments and onLand:
         segments = ((),())
-      renderer.drawTileBySegments(draw,x,yd-y,segments)
-  return img
+      renderer.render(x,yd-y,segments)
+
+class ImageRenderer(object):
+  def __init__(self, img, tileSet):
+    self.draw = ImageDraw.Draw(img)
+    self.tileSet = tileSet
+  def render(self, x, y, segments):
+    self.tileSet.drawTileBySegments(self.draw,x,y,segments)
+
+class TileIndexRenderer(object):
+  def __init__(self, tileIndex, tileSet, width,height):
+    self.width = width
+    self.height = height
+    self.tileIndex = tileIndex
+    self.tileSet = tileSet
+  def render(self, x, y, segments):
+    self.tileIndex[(y-1)*self.width+x] = self.tileSet.getTileIndex(segments)
 
 class Tile(object):
   def __init__(self, x, y):
@@ -249,7 +289,6 @@ class GeoPoint(Point):
       )
   def addSegment(self):
     crossIn = self.lineIn.points[-1].cross
-    print(self.lineOut)
     crossOut = self.lineOut.points[0].cross
     self.tile.addSegment(Segment(crossIn, crossOut))
 
@@ -258,11 +297,16 @@ if __name__ == '__main__':
   parser.add_argument('--polygon', help='ID of OSM polygon')
   parser.add_argument('--geojson', help='GeoJson file with polygon')
   parser.add_argument('--scale', help='scale')
+  parser.add_argument('--output', help='JSON (tile index) or  PNG (default)')
   args = parser.parse_args()
   
-  img = createMap(jsonFromFileOrPolygon(args.geojson, args.polygon), 1 if args.scale is None else float(args.scale))
-
-  img.save('map.png', "png")
-  img.show()
+  geojson = jsonFromFileOrPolygon(args.geojson, args.polygon)
+  if args.output == 'JSON':
+    index = createTileIndex(geojson, None if args.scale is None else float(args.scale))
+    print(json.dumps(index))
+  elif args.output is None or args.output == 'PNG':
+    img = createMap(geojson, None if args.scale is None else float(args.scale))
+    img.save('map.png', "png")
+    img.show()
 
 
