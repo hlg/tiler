@@ -168,7 +168,7 @@ class ImageRenderer(object):
     self.draw = ImageDraw.Draw(img)
     self.tileSet = tileSet
   def render(self, x, y, segments):
-    self.tileSet.drawTileBySegments(self.draw,x,y,segments)
+    self.tileSet.drawTileBySegments(self.draw,x,y-1,segments)
 
 class TileIndexRenderer(object):
   def __init__(self, tileIndex, tileSet, width,height):

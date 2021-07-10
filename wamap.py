@@ -108,7 +108,7 @@ if __name__ == "__main__":
     index = [d+1 for d in data["index"]]
   mapWidth = data["width"]
   mapHeight = data["height"]
-  start = [2 if d==2 else 0 for d in index]
+  start = [2 if d1==2 and d2>2  else 0 for (d1,d2) in zip(index[:-1],index[1:])] + [0]
   tiled = island(index, start)
   with open(dataFile.replace('data', 'map'),'w') as f:
     json.dump(tiled, f, indent=4)
