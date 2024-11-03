@@ -119,9 +119,10 @@ def tileIndex(geoJson, shortIslandName):
 def islandIndex():
   for island in islands:
     shortIslandName = island.name.replace(" ","")
-    print('* {name}: [WA map]({wa}), [OSM]({osm}), [Wikipedia]({wiki})'.format(
+    print('* {name}: [WA graphic]({wa}), [WA sand]({sand}), [OSM]({osm}), [Wikipedia]({wiki})'.format(
       name=island.name, 
-      wa='islands/'+shortIslandName+'-map.json',
+      wa='islands/abstract/'+shortIslandName+'-map.json',
+      sand='islands/sand/'+shortIslandName+'-map.json',
       osm='https://www.openstreetmap.org/relation/'+str(island.polygon),
       wiki='https://en.wikipedia.org/wiki/'+island.name
     ))
